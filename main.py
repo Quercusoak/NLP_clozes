@@ -3,6 +3,52 @@ import json
 from collections import defaultdict
 
 
+#
+# def generate_random_solutions(corpus, cloze, candidates):
+#     candidates_list = read_file(candidates)
+#     input_text = read_file(cloze)
+#
+#     """For 100 solutions: per blank index keep the trigram and bigram pair"""
+#     blanks_candidates = {idx: {blank: {} for blank in range(len(candidates_list))} for idx in range(100)}
+#     # random_orders = [random.sample(candidates_list, len(candidates_list)) for _ in range(100)]
+#
+#     context = []
+#     for line in input_text:
+#         words = line.split()
+#         for i, word in enumerate(words):
+#             if word == "__________":
+#                 word_before2 = words[i - 2] if i > 1 else None
+#                 word_before = words[i - 1] if i > 0 else None
+#                 word_after = words[i + 1] if i + 1 < len(words) else None
+#                 word_after2 = words[i + 2] if i + 2 < len(words) else None
+#                 context.append((word_before2, word_before, word_after, word_after2))
+#
+#     all_phrases = {}
+#     for x in range(100):
+#         random.shuffle(candidates_list)
+#         for i, (w1, w2, w3, w4) in enumerate(context):
+#             c = candidates_list[i]
+#             if w1 is not None and w2 is not None:
+#                 trigram = f"{w1} {w2} {c}".strip().lower()
+#                 bigram = f"{w1} {w2}".strip().lower()
+#                 blanks_candidates[x][i][trigram] = bigram
+#                 all_phrases[trigram] = 0
+#                 all_phrases[bigram] = 0
+#             if w2 is not None and w3 is not None:
+#                 trigram = f"{w2} {c} {w3}".strip().lower()
+#                 bigram = f"{w2} {c}".strip().lower()
+#                 blanks_candidates[x][i][trigram] = bigram
+#                 all_phrases[trigram] = 0
+#                 all_phrases[bigram] = 0
+#             if w3 is not None and w4 is not None:
+#                 trigram = f"{c} {w3} {w4}".strip().lower()
+#                 bigram = f"{c} {w3}".strip().lower()
+#                 blanks_candidates[x][i][trigram] = bigram
+#                 all_phrases[trigram] = 0
+#                 all_phrases[bigram] = 0
+#
+#     count_occurrences(corpus, all_phrases)
+
 def generate_100_random_solutions(candidates):
     """Generates 100 random solutions for the given cloze and calculates mean accuracy"""
     candidates_list = read_file(candidates)
@@ -186,7 +232,7 @@ def solve_cloze(input, candidates, corpus):
     it'll get next probable candidate).
     """
     print(f'starting to solve the cloze {input} with {candidates} using {corpus}')
-    # print(generate_100_random_solutions(candidates))
+
     candidates_list = read_file(candidates)
     all_phrases, blank_X_candidate = create_phrases(candidates_list, input)
 
