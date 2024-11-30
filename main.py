@@ -1,18 +1,46 @@
+import random
 import json
-
-import ahocorasick
 from collections import defaultdict
 
 
-def create_trie(phrases):
+def generate_100_random_solutions(candidates):
+    """Generates 100 random solutions for the given cloze and calculates mean accuracy"""
+    candidates_list = read_file(candidates)
+    random_solutions = [random.sample(candidates_list, len(candidates_list)) for _ in range(100)]
+    accuracy = [0.0 for _ in range(100)]
+    size = len(candidates_list)
+
+    for i, solutions in enumerate(random_solutions):
+        for blank, word in enumerate(solutions):
+            if candidates_list[blank] == word:
+                accuracy[i] += 1
+        accuracy[i] /= size
+
+    final_accuracy = sum(accuracy) / 100
+    return final_accuracy
+
+
+class TrieNode:
+    """ Tree for the phrases created from N-grams"""
+    def __init__(self):
+        self.children = defaultdict(TrieNode)
+        self.is_end_of_phrase = False
+        self.count = 0
+
+
+def build_trie(all_phrases):
+    """ A tree of trigrams phrases words
+    First word in phrase is a node whose children are the next word in phrase.
+    That way phrases that begin similarly are checked once,
+    and we look for the first word in the sentence before checking the others.
     """
-    Build a Trie (Aho-Corasick Automaton) from the list of phrases.
-    """
-    automaton = ahocorasick.Automaton()
-    for i, phrase in enumerate(phrases.keys()):
-        automaton.add_word(phrase, phrase)
-    automaton.make_automaton()
-    return automaton
+    root = TrieNode()
+    for phrase in all_phrases:
+        node = root
+        for word in phrase.split():
+            node = node.children[word]
+        node.is_end_of_phrase = True
+    return root
 
 
 def read_file(filename):
@@ -20,19 +48,14 @@ def read_file(filename):
         return [line.strip() for line in file.readlines() if line.strip()]
 
 
-# Generate phrases for all blanks
-def create_all_phrases(candidates, context):
-    all_phrases = defaultdict(list)
-    for i, (start_segment, end_segment) in enumerate(context):
-
-        for candidate in candidates:
-            phrase = f"{start_segment or ''} {candidate} {end_segment or ''}".strip().lower()
-            all_phrases[phrase].append((i, candidate))
-
-    return all_phrases
-
-
 def create_phrases(candidates, input) -> tuple[dict[str, int], dict[int, dict[str, defaultdict[str, str]]]]:
+    """
+    Creates trigrams from sentence with a blank.
+    Takes two words before and two after the blank and using all candidate words.
+    If blank doesn't have two words before/after it, create bigrams.
+    Returns all created phrases and a dictionary that contains the connection of trigram w1 w2 w3 to the bigram w1 w2
+    and which blank and which candidate created this trigram.
+    """
     input_text = read_file(input)
     phrases = {}
     idx = -1
@@ -84,7 +107,29 @@ def create_phrases(candidates, input) -> tuple[dict[str, int], dict[int, dict[st
     return phrases, blank_X_candidate
 
 
+def count_occurrences(corpus, all_phrases):
+    """ Count occurrences in corpus using trie tree of all phrases created from trigrams"""
+    root = build_trie(all_phrases)
+
+    with open(corpus, 'r', encoding='utf-8') as corpus_text:
+        for idx, corpus_line in enumerate(corpus_text):
+            corpus_line = corpus_line.strip().lower().split()
+            for i in range(len(corpus_line)):
+                node = root
+                for j in range(i, len(corpus_line)):
+                    word = corpus_line[j]
+                    if word not in node.children:
+                        break
+                    node = node.children[word]
+                    if node.is_end_of_phrase:
+                        phrase = ' '.join(corpus_line[i:j + 1])
+                        all_phrases[phrase] += 1
+
+
 def calculate_probability(blank_X_candidate, phrases):
+    """
+    For each blank-candidate pair, calculates probability of all trigrams of the pair.
+    """
     num_blanks = len(blank_X_candidate.keys())
     candidate_scores = {blank: {} for blank in range(num_blanks)}
     k = 0.5
@@ -101,15 +146,21 @@ def calculate_probability(blank_X_candidate, phrases):
 
 
 def assign_candidate_to_blank(candidate_scores, candidates_list):
+    """
+    Calculate for each blank the most probable solution - with the highest probability.
+    Then from all those choose highest probability and assign to the blank.
+    If that solution is already assigned to another blank, find the next highest unassigned solution.
+    """
     sorted_candidates = {}
     for idx, c in candidate_scores.items():
         sorted_candidates[idx] = sorted(c.items(), key=lambda x: x[1], reverse=True)
 
     output = [None]*len(candidates_list)
 
-    # list of top words - select the one with most confidence:
-    # if unassigned apply to blank, otherwise find next word for this blank with most confidence
+    """ List of top words - select the one with most confidence:
+        If unassigned apply to blank, otherwise find next word for this blank with most confidence"""
     max_list = {idx: sorted_candidates[idx][0] for idx in sorted_candidates.keys()}
+
     while len(candidates_list) > 0:
         max_idx, max_candidate = max(max_list.items(), key=lambda x: x[1][1])
         if max_candidate[0] in candidates_list:
@@ -122,37 +173,26 @@ def assign_candidate_to_blank(candidate_scores, candidates_list):
                 max_candidate = sorted_candidates[max_idx][0]
             max_list[max_idx] = max_candidate
 
-    # TODO: delete, for testing
-    for x in range(len(output)):
-        print(f"#{x+1} {output[x]}")
-
     return output
 
 
 def solve_cloze(input, candidates, corpus):
+    """
+    Build trie tree of all phrases (trigrams for each candidate for each blank, and the corresponding preceding bigram).
+    For each corpus line if the first word of the phrase appears - check children, and this way look for whole phrase
+    (is_end_of_phrase = True).
+    Each occurrence is counted and then probability is calculated per blank per candidate.
+    Last we assign candidate to blank by highest probability (if other blank has same candidate but lower probability,
+    it'll get next probable candidate).
+    """
     print(f'starting to solve the cloze {input} with {candidates} using {corpus}')
-
+    # print(generate_100_random_solutions(candidates))
     candidates_list = read_file(candidates)
-
     all_phrases, blank_X_candidate = create_phrases(candidates_list, input)
 
-    automaton = create_trie(all_phrases)
-
-    # Count occurrences in corpus
-    with open(corpus, 'r', encoding='utf-8') as corpus_text:
-        for i, corpus_line in enumerate(corpus_text):
-            if i % 100000 == 0:  # TODO: delete, for testing
-                print(i)
-            corpus_line = corpus_line.strip().lower()
-            # for phrase in all_phrases.keys():
-            #     if phrase in corpus_line:
-            #         all_phrases[phrase] += 1
-
-            for idx, phrase in automaton.iter(corpus_line):
-                all_phrases[phrase] += 1
+    count_occurrences(corpus, all_phrases)
 
     candidate_scores = calculate_probability(blank_X_candidate, all_phrases)
-
     output = assign_candidate_to_blank(candidate_scores, candidates_list)
 
     return output
